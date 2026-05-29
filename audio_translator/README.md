@@ -23,8 +23,9 @@ PC에서 **재생되는 소리**(유튜브 영상, 음악, 영어 강의 등)를
 
 ## 정확도를 높이는 설계
 
-- **장치/모델 자동 선택**: GPU가 있으면 최고 정확도 모델 `large-v3`를,
-  CPU면 실시간에 가까운 모델을 자동 적용합니다 (`--model auto`).
+- **장치/모델 자동 선택**: GPU가 있으면 `large-v3-turbo`(large급 정확도를
+  유지하면서 4~8배 빠름)를, CPU면 실시간에 가까운 모델을 자동 적용합니다
+  (`--model auto`).
 - **문맥 유지 인식**: 직전 인식 결과를 다음 청크의 힌트로 넘겨 고유명사·
   말투의 일관성을 높입니다. `beam_size=5`로 탐색 품질도 올립니다.
 - **VAD 필터**: 무음/잡음 구간을 잘라 환각(없는 말 생성)을 줄입니다.
@@ -32,7 +33,21 @@ PC에서 **재생되는 소리**(유튜브 영상, 음악, 영어 강의 등)를
   끊기지 않습니다.
 
 > 정확도의 가장 큰 변수는 **모델 크기**입니다. 정확도를 최우선으로 한다면
-> `--model medium` 또는 `--model large-v3` 를 쓰세요(아래 표 참고).
+> `--model large-v3-turbo`(GPU 권장) 또는 CPU에서는 `--model medium` 을
+> 쓰세요(아래 속도 표 참고).
+
+### 모델별 속도/정확도 (5초 오디오 기준, 대략)
+
+| 모델 | CPU 속도 | GPU 속도 | 정확도 | 비고 |
+| --- | --- | --- | --- | --- |
+| `small` | ~실시간 | 매우 빠름 | 보통 | CPU 기본값 |
+| `medium` | 느림 | 빠름 | 좋음 | CPU 정확도용 |
+| `large-v3` | 매우 느림 | ~실시간 | 최고 | CPU 비권장 |
+| `large-v3-turbo` | 느림 | 매우 빠름 | large급 | **GPU 기본값(추천)** |
+
+> `large-v3`는 CPU에서 5초 소리 처리에 수십 초가 걸려 실시간이 불가능합니다.
+> GPU가 있다면 `large-v3` 대신 거의 같은 정확도에 훨씬 빠른
+> `large-v3-turbo` 를 쓰는 것이 좋습니다.
 
 ## 동작 환경
 
@@ -48,7 +63,7 @@ pip install -r requirements.txt
 
 > faster-whisper는 첫 실행 시 모델을 자동 다운로드합니다(무료).
 > CPU만 있어도 동작하며, NVIDIA GPU가 있으면 자동으로 GPU(`float16`)와
-> `large-v3` 모델을 사용해 정확도·속도가 크게 향상됩니다.
+> `large-v3-turbo` 모델을 사용해 정확도·속도가 크게 향상됩니다.
 
 ## 실행
 
@@ -60,7 +75,7 @@ python main.py
 
 ```
 🎧 시스템 출력음을 듣는 중입니다... (Ctrl+C 로 종료)
-   모델=large-v3, 장치=cuda(float16), 청크=5.0s, 대상=한국어
+   모델=large-v3-turbo, 장치=cuda(float16), 청크=5.0s, 대상=한국어
 
 [14:03:21] (en 98%)
 Never gonna give you up, never gonna let you down
@@ -71,7 +86,7 @@ Never gonna give you up, never gonna let you down
 
 | 옵션 | 설명 | 기본값 |
 | --- | --- | --- |
-| `--model` | `auto/tiny/base/small/medium/large-v3` (auto=GPU면 large-v3) | `auto` |
+| `--model` | `auto/.../large-v3/large-v3-turbo` (auto=GPU면 turbo) | `auto` |
 | `--device` | `auto/cpu/cuda` (auto=GPU 자동 감지) | `auto` |
 | `--compute-type` | `auto/int8/float16` | `auto` |
 | `--beam-size` | 빔 서치 크기 (클수록 정확↑/속도↓) | `5` |
@@ -81,7 +96,7 @@ Never gonna give you up, never gonna let you down
 
 기본값(`auto`)이 하드웨어에 맞춰 최적 모델을 고릅니다. 빠른 반응이
 필요하면 `--model base --chunk-seconds 3`, **정확도를 최우선**으로 하면
-`--model large-v3`(권장, GPU 필요) 또는 CPU에서는 `--model medium` 을
+`--model large-v3-turbo`(권장, GPU) 또는 CPU에서는 `--model medium` 을
 쓰세요.
 
 ## 구조
@@ -108,8 +123,8 @@ pytest
 ## 한계 / 참고
 
 - **노래**는 배경음악·화음 때문에 일반 음성보다 인식 정확도가 떨어질 수
-  있습니다. 가사 자막용으로는 `--model large-v3`(GPU) 또는 `medium`(CPU)을
-  권장합니다.
+  있습니다. 가사 자막용으로는 `--model large-v3-turbo`(GPU) 또는
+  `medium`(CPU)을 권장합니다.
 - 5초 고정 창으로 처리하므로 문장이 창 경계에서 잘릴 수 있습니다.
 - Google 무료 번역은 비공식 엔드포인트라 과도한 사용 시 일시 제한될 수
   있는데, 이때 자동으로 무료 MyMemory 엔진으로 전환되어 끊기지 않습니다

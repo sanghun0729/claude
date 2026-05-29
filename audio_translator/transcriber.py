@@ -37,8 +37,8 @@ def detect_device() -> tuple[str, str]:
 
 def recommend_model(device: str) -> str:
     """장치에 맞는 정확도/속도 균형 모델을 추천한다."""
-    # GPU면 최고 정확도, CPU면 실시간성을 고려한 균형 모델.
-    return "large-v3" if device == "cuda" else "small"
+    # GPU면 large급 정확도이면서 4~8배 빠른 turbo, CPU면 실시간성 우선 small.
+    return "large-v3-turbo" if device == "cuda" else "small"
 
 
 class Transcriber:

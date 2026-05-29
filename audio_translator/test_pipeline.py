@@ -105,7 +105,7 @@ def test_returns_original_when_all_engines_fail(monkeypatch):
 # --- transcriber (auto 설정 로직) -----------------------------------------
 
 def test_recommend_model_by_device():
-    assert tr.recommend_model("cuda") == "large-v3"
+    assert tr.recommend_model("cuda") == "large-v3-turbo"
     assert tr.recommend_model("cpu") == "small"
 
 
