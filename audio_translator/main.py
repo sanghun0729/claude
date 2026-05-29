@@ -86,8 +86,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--model", default="auto",
-        help="모델 (auto/tiny/base/small/medium/large-v3/large-v3-turbo). "
-             "auto=GPU면 large-v3-turbo, CPU면 small. 기본 auto",
+        help="모델 (auto/tiny/base/small/medium/large-v3/large-v3-turbo/"
+             "distil-large-v3). auto=GPU면 large-v3-turbo, CPU면 small. "
+             "distil-large-v3는 영어 전용·고속. 기본 auto",
     )
     p.add_argument(
         "--device", default="auto",
