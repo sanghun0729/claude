@@ -37,7 +37,10 @@ def _capture_loop(recorder: LoopbackRecorder, q: "queue.Queue", stop: threading.
 def run(args) -> int:
     recorder = LoopbackRecorder(chunk_seconds=args.chunk_seconds)
     transcriber = Transcriber(
-        model_size=args.model, device=args.device, compute_type=args.compute_type
+        model_size=args.model,
+        device=args.device,
+        compute_type=args.compute_type,
+        beam_size=args.beam_size,
     )
     printer = SubtitlePrinter(colored=not args.no_color)
 
@@ -48,8 +51,11 @@ def run(args) -> int:
     )
 
     print("🎧 시스템 출력음을 듣는 중입니다... (Ctrl+C 로 종료)", file=sys.stderr)
-    print(f"   모델={args.model}, 청크={args.chunk_seconds}s, 대상=한국어\n",
-          file=sys.stderr)
+    print(
+        f"   모델={transcriber.model_size}, 장치={transcriber.device}"
+        f"({transcriber.compute_type}), 청크={args.chunk_seconds}s, 대상=한국어\n",
+        file=sys.stderr,
+    )
     cap.start()
 
     try:
@@ -79,13 +85,21 @@ def build_parser() -> argparse.ArgumentParser:
         description="시스템 출력음을 실시간으로 한국어 자막으로 변환합니다."
     )
     p.add_argument(
-        "--model", default="small",
-        help="faster-whisper 모델 크기 (tiny/base/small/medium/large-v3). 기본 small",
+        "--model", default="auto",
+        help="모델 크기 (auto/tiny/base/small/medium/large-v3). "
+             "auto=GPU면 large-v3, CPU면 small. 기본 auto",
     )
-    p.add_argument("--device", default="cpu", help="cpu 또는 cuda. 기본 cpu")
     p.add_argument(
-        "--compute-type", default="int8",
-        help="연산 타입 (cpu: int8, gpu: float16). 기본 int8",
+        "--device", default="auto",
+        help="auto/cpu/cuda. auto=GPU 자동 감지. 기본 auto",
+    )
+    p.add_argument(
+        "--compute-type", default="auto",
+        help="연산 타입 auto/int8/float16. 기본 auto",
+    )
+    p.add_argument(
+        "--beam-size", type=int, default=5,
+        help="빔 서치 크기. 클수록 정확↑/속도↓. 기본 5",
     )
     p.add_argument(
         "--chunk-seconds", type=float, default=5.0,

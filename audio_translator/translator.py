@@ -1,7 +1,12 @@
-"""Google 번역(deep-translator) 기반 한국어 번역.
+"""한국어 번역 (모두 무료, API 키 불필요).
+
+폴백 체인:
+    1) Google 번역 (deep-translator, 무료 엔드포인트) — 품질 우수
+    2) Google(auto 감지) 재시도
+    3) MyMemory (무료) — Google이 차단/실패했을 때의 대비책
 
 - 이미 한국어인 텍스트는 그대로 반환한다.
-- 같은 가사/문장이 반복될 때 불필요한 API 호출을 막기 위해 캐시를 둔다.
+- 같은 문장 반복 시 캐시로 중복 호출을 막는다.
 - 테스트를 위해 `translate_fn`을 주입할 수 있다(네트워크 없이 검증 가능).
 """
 
@@ -10,21 +15,49 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 TARGET_LANG = "ko"
+_MYMEMORY_TARGET = "ko-KR"
+
+# Whisper가 내놓는 ISO 639-1 코드 → MyMemory가 요구하는 지역 코드.
+# 매핑에 없으면 영어로 가정하지 않고 Google(auto)에 맡긴다.
+_MYMEMORY_SOURCE = {
+    "en": "en-GB", "ja": "ja-JP", "zh": "zh-CN", "es": "es-ES",
+    "fr": "fr-FR", "de": "de-DE", "ru": "ru-RU", "it": "it-IT",
+    "pt": "pt-PT", "vi": "vi-VN", "th": "th-TH", "id": "id-ID",
+    "ar": "ar-SA", "hi": "hi-IN",
+}
 
 # (text, source_lang) -> 번역 결과
 _cache: dict[tuple[str, Optional[str]], str] = {}
 
 
-def _default_translate(text: str, source_lang: Optional[str]) -> str:
-    """deep-translator GoogleTranslator를 사용한 실제 번역."""
+def _google(text: str, source: str) -> str:
     from deep_translator import GoogleTranslator
 
+    return GoogleTranslator(source=source, target=TARGET_LANG).translate(text)
+
+
+def _mymemory(text: str, source_lang: Optional[str]) -> str:
+    from deep_translator import MyMemoryTranslator
+
+    src = _MYMEMORY_SOURCE.get(source_lang or "", "en-GB")
+    return MyMemoryTranslator(source=src, target=_MYMEMORY_TARGET).translate(text)
+
+
+def _default_translate(text: str, source_lang: Optional[str]) -> str:
+    """무료 엔진들을 순서대로 시도한다. 모두 실패하면 원문을 반환."""
     source = source_lang or "auto"
-    try:
-        return GoogleTranslator(source=source, target=TARGET_LANG).translate(text)
-    except Exception:
-        # 언어 코드가 지원되지 않는 등 실패 시 자동 감지로 재시도
-        return GoogleTranslator(source="auto", target=TARGET_LANG).translate(text)
+    for attempt in (
+        lambda: _google(text, source),
+        lambda: _google(text, "auto"),
+        lambda: _mymemory(text, source_lang),
+    ):
+        try:
+            result = attempt()
+            if result:
+                return result
+        except Exception:
+            continue
+    return text  # 모든 무료 엔진 실패 시 원문 유지
 
 
 def to_korean(

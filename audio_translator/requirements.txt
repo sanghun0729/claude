@@ -1,3 +1,4 @@
+# 모두 무료 (API 키 불필요)
 numpy>=1.24
 soundcard>=0.4.3
 faster-whisper>=1.0.0

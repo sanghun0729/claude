@@ -9,6 +9,7 @@ import pytest
 
 import audio_source as a
 import translator as t
+import transcriber as tr
 from subtitle import SubtitlePrinter, format_subtitle
 
 
@@ -74,6 +75,47 @@ def test_translation_uses_cache():
 
 def test_empty_text_returns_empty():
     assert t.to_korean("   ", "en") == ""
+
+
+def test_falls_back_when_first_engine_fails(monkeypatch):
+    # _default_translate 가 첫 엔진 실패 시 다음 무료 엔진으로 넘어가는지 검증.
+    calls = []
+
+    def boom(text, source):
+        calls.append("google")
+        raise RuntimeError("blocked")
+
+    def ok_mymemory(text, source_lang):
+        calls.append("mymemory")
+        return "폴백번역"
+
+    monkeypatch.setattr(t, "_google", boom)
+    monkeypatch.setattr(t, "_mymemory", ok_mymemory)
+    assert t._default_translate("hello", "en") == "폴백번역"
+    # google 두 번 시도(source, auto) 후 mymemory 성공
+    assert calls == ["google", "google", "mymemory"]
+
+
+def test_returns_original_when_all_engines_fail(monkeypatch):
+    monkeypatch.setattr(t, "_google", lambda *a: (_ for _ in ()).throw(RuntimeError()))
+    monkeypatch.setattr(t, "_mymemory", lambda *a: (_ for _ in ()).throw(RuntimeError()))
+    assert t._default_translate("hello", "en") == "hello"
+
+
+# --- transcriber (auto 설정 로직) -----------------------------------------
+
+def test_recommend_model_by_device():
+    assert tr.recommend_model("cuda") == "large-v3"
+    assert tr.recommend_model("cpu") == "small"
+
+
+def test_auto_resolves_without_loading_model():
+    # 모델을 실제로 로드하지 않고 device/compute_type/model_size만 해석되는지 확인.
+    t_ = tr.Transcriber(model_size="auto", device="cpu", compute_type="auto")
+    assert t_.device == "cpu"
+    assert t_.compute_type == "int8"
+    assert t_.model_size == "small"
+    assert t_._model is None
 
 
 # --- subtitle -------------------------------------------------------------
