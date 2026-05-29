@@ -104,18 +104,31 @@ def test_returns_original_when_all_engines_fail(monkeypatch):
 
 # --- transcriber (auto 설정 로직) -----------------------------------------
 
-def test_recommend_model_by_device():
-    assert tr.recommend_model("cuda") == "large-v3-turbo"
-    assert tr.recommend_model("cpu") == "small"
+def test_recommend_model_english_uses_distil():
+    # 영어 전용이면 장치와 무관하게 distil-large-v3(영어 특화 고속·고정밀).
+    assert tr.recommend_model("cuda", "en") == "distil-large-v3"
+    assert tr.recommend_model("cpu", "en") == "distil-large-v3"
 
 
-def test_auto_resolves_without_loading_model():
-    # 모델을 실제로 로드하지 않고 device/compute_type/model_size만 해석되는지 확인.
+def test_recommend_model_multilingual_by_device():
+    assert tr.recommend_model("cuda", None) == "large-v3-turbo"
+    assert tr.recommend_model("cpu", None) == "small"
+
+
+def test_auto_resolves_english_without_loading_model():
+    # 기본(영어)에서 device/compute_type/model_size가 로드 없이 해석되는지 확인.
     t_ = tr.Transcriber(model_size="auto", device="cpu", compute_type="auto")
     assert t_.device == "cpu"
     assert t_.compute_type == "int8"
-    assert t_.model_size == "small"
+    assert t_.language == "en"
+    assert t_.model_size == "distil-large-v3"
     assert t_._model is None
+
+
+def test_language_auto_is_normalized_to_none():
+    t_ = tr.Transcriber(model_size="auto", device="cpu", language="auto")
+    assert t_.language is None
+    assert t_.model_size == "small"  # 다국어 CPU 기본
 
 
 # --- subtitle -------------------------------------------------------------
@@ -145,3 +158,66 @@ def test_printer_skips_duplicate(capsys):
 def test_printer_skips_empty():
     p = SubtitlePrinter(colored=False)
     assert p.show("   ", "x", "en") is False
+
+
+# --- segmenter (VAD 발화 분할) --------------------------------------------
+
+from segmenter import VadSegmenter, energy_is_speech
+
+SR = 16_000
+FRAME = 0.1  # 100ms 프레임으로 계산하기 쉽게
+
+
+def _frame(speech: bool):
+    n = int(SR * FRAME)
+    return np.ones(n, dtype=np.float32) if speech else np.zeros(n, dtype=np.float32)
+
+
+def _seg():
+    return VadSegmenter(
+        sample_rate=SR, frame_seconds=FRAME, silence_ms=300,
+        min_speech_ms=200, speech_pad_ms=200,
+        is_speech_fn=energy_is_speech(threshold=0.5),
+    )
+
+
+def test_segmenter_emits_one_utterance_after_silence():
+    seg = _seg()
+    # 침묵1, 말3, 침묵3 → 침묵 300ms에서 발화 종료
+    pattern = [False, True, True, True, False, False, False]
+    outputs = [seg.push(_frame(s)) for s in pattern]
+    emitted = [o for o in outputs if o is not None]
+    assert len(emitted) == 1
+    # 프리롤(직전 침묵1) + 말3 + 말꼬리 침묵3 = 7프레임
+    assert emitted[0].shape[0] == 7 * int(SR * FRAME)
+    # 마지막(7번째) 프레임에서만 방출
+    assert outputs[-1] is not None
+    assert all(o is None for o in outputs[:-1])
+
+
+def test_segmenter_discards_short_blip():
+    seg = _seg()
+    # 말 1프레임(100ms < 최소 200ms) 후 침묵 → 잡음으로 폐기
+    pattern = [True, False, False, False]
+    emitted = [o for o in (seg.push(_frame(s)) for s in pattern) if o is not None]
+    assert emitted == []
+
+
+def test_segmenter_force_emits_on_max_length():
+    seg = VadSegmenter(
+        sample_rate=SR, frame_seconds=FRAME, silence_ms=10_000,
+        min_speech_ms=100, max_utterance_s=0.5,
+        is_speech_fn=energy_is_speech(threshold=0.5),
+    )
+    # 침묵 없이 계속 말하면 max_utterance(0.5s=5프레임)에서 강제 종료
+    outputs = [seg.push(_frame(True)) for _ in range(6)]
+    assert any(o is not None for o in outputs)
+
+
+def test_segmenter_flush_returns_pending_speech():
+    seg = _seg()
+    seg.push(_frame(True))
+    seg.push(_frame(True))  # 200ms 누적, 아직 침묵 없음
+    out = seg.flush()
+    assert out is not None
+    assert out.shape[0] == 2 * int(SR * FRAME)

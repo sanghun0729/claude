@@ -4,3 +4,6 @@ soundcard>=0.4.3
 faster-whisper>=1.0.0
 deep-translator>=1.11.4
 colorama>=0.4.6
+
+# 선택: 더 정확한 발화 분할(--vad webrtcvad). 미설치 시 energy VAD 사용.
+# webrtcvad>=2.0.10

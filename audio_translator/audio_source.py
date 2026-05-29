@@ -65,8 +65,7 @@ class LoopbackRecorder:
         self.chunk_seconds = chunk_seconds
         self.target_sr = target_sr
 
-    def chunks(self) -> Iterator[np.ndarray]:
-        """기본 스피커 루프백에서 모노 16kHz float32 청크를 무한히 생성."""
+    def _open_loopback(self):
         try:
             import soundcard as sc
         except ImportError as exc:  # pragma: no cover - 환경 의존
@@ -77,11 +76,24 @@ class LoopbackRecorder:
         speaker = sc.default_speaker()
         # 기본 스피커와 같은 이름의 루프백 마이크를 찾는다.
         mic = sc.get_microphone(id=str(speaker.name), include_loopback=True)
-        device_sr = 48_000  # 대부분의 Windows 장치 기본값
-        frames = int(device_sr * self.chunk_seconds)
+        return mic, 48_000  # 대부분의 Windows 장치 기본 샘플레이트
 
+    def chunks(self) -> Iterator[np.ndarray]:
+        """기본 스피커 루프백에서 모노 16kHz float32 청크를 무한히 생성."""
+        mic, device_sr = self._open_loopback()
+        frames = int(device_sr * self.chunk_seconds)
         with mic.recorder(samplerate=device_sr, channels=None) as rec:
             while True:
                 data = rec.record(numframes=frames)  # (frames, channels)
+                mono = to_mono(data)
+                yield resample(mono, device_sr, self.target_sr)
+
+    def frames(self, frame_seconds: float = 0.03) -> Iterator[np.ndarray]:
+        """짧은 프레임(기본 30ms)을 연속 생성한다(VAD 분할용)."""
+        mic, device_sr = self._open_loopback()
+        nframes = int(device_sr * frame_seconds)
+        with mic.recorder(samplerate=device_sr, channels=None) as rec:
+            while True:
+                data = rec.record(numframes=nframes)
                 mono = to_mono(data)
                 yield resample(mono, device_sr, self.target_sr)
